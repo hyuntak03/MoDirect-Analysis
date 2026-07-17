@@ -1,0 +1,57 @@
+# The three models, mirroring modirect/config/registry.py.
+#
+# THIS FILE IS DOCUMENTATION, NOT INPUT. `modirect.config.registry` does not read it —
+# the registry is code because `resolve_model_args` must work with no config present,
+# and because these values are facts about trained artefacts rather than host settings.
+# It is kept in sync by hand; registry.py is the source of truth if they ever disagree.
+#
+# WHAT IS AND IS NOT PINNED HERE
+#   lora_dirname is a BASENAME, verbatim from the source scripts. It encodes the training
+#   recipe (r64 = LoRA rank 64, f8 = 8 frames, ep1, lr1e-5) — changing it means a
+#   different model, not a different host, so it is not configurable.
+#   The LoRA ROOT is not here: it is `checkpoint_root` in configs/paths.yaml. Full path is
+#       {checkpoint_root}/{lora_dirname}
+#
+# ARGS COMPOSITION (registry.resolve_model_args, mirroring
+# analysis/task_invariance/extract_attn_mlp_contrib.py:74-78):
+#   vanilla           -> "{vanilla_args}"
+#   baseline / delta  -> "lora_pretrained={checkpoint_root}/{lora_dirname},{vanilla_args}"
+# `lora_pretrained` comes FIRST. parse_model_args splits on commas so order is functionally
+# irrelevant, but the string is logged and used to name result dirs, and results already
+# on disk were written under this ordering.
+
+# Shared by all three models — a LoRA run just prepends `lora_pretrained=`.
+# Verbatim from mechanism_diagnosis.py:36 and extract_attn_mlp_contrib.py:32.
+# max_frames_num=8 is why every cached feature has T=8; mm_spatial_pool_mode=bilinear is
+# the pooling that `after_projector` features sit downstream of. Changing either
+# invalidates every cache under feature_root.
+vanilla_args: "pretrained=lmms-lab/LLaVA-Video-7B-Qwen2,video_decode_backend=decord,conv_template=qwen_1_5,mm_spatial_pool_mode=bilinear,max_frames_num=8,device_map=auto,force_sample=True"
+
+# Order is the canonical presentation order used by every CLAUDE.md table:
+# increasing supervision, vanilla -> baseline -> delta.
+models:
+
+  vanilla:
+    lora_dirname: null        # null, not a path: the stock checkpoint has no LoRA
+    description: >-
+      Stock LLaVA-Video-7B-Qwen2, no fine-tuning. The control: no L19 direction
+      amplifier at all (push ~0 vs Baseline +37.8), and letter probe never leaves
+      chance at any layer.
+
+  baseline:
+    # extract_attn_mlp_contrib.py:33
+    lora_dirname: llava-video-7b-qwen2_baseline_shape_simple_new_lora-r64_f8_ep1_lr1e-5
+    description: >-
+      4combo_v2 LoRA, MCQ loss only. Learns the L19 amplifier and the task-invariant
+      L21 axis (cross-task cos 0.94), but leaves the projector's direction axis
+      task-specific (cos ~0.27, indistinguishable from Vanilla).
+
+  delta:
+    # extract_attn_mlp_contrib.py:34
+    lora_dirname: llava-video-7b-qwen2_delta_direct_shape_simple_new_lora-r64_f8_ep1_lr1e-5
+    description: >-
+      4combo_v2 + delta_direct auxiliary loss on the projector's temporal delta. Same
+      mechanism as Baseline, fired harder: binding starts one layer earlier (L16 vs
+      L17) and the projector axis aligns (cos 0.27 -> 0.70). The auxiliary head is
+      dropped at inference, so its load args are identical in shape to Baseline's —
+      only the weights differ.

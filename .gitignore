@@ -1,0 +1,86 @@
+# ==============================================================================
+#  .gitignore — MoDirect-Analysis
+#
+#  RULE: EVERY PATTERN IS ANCHORED WITH A LEADING "/".
+#
+#  An unanchored pattern in git matches at EVERY level of the tree, not just the
+#  root. That is not a style preference here; it destroyed work in the previous
+#  repo (cross-modal-info). Its .gitignore contained bare rules:
+#
+#      scripts/          <- intended: a throwaway root-level scratch dir
+#      *.json            <- intended: bulky cached blobs
+#      analysis/swap_intervention/
+#
+#  "scripts/" matched analysis/factorial_experiment/scripts/ — the entire factorial
+#  intervention codebase. "*.json" matched its results/*.json alongside it. Neither
+#  was ever staged, so `git status` stayed clean and nothing ever warned. That code
+#  has NO commit and NO history: it is PERMANENTLY LOST AND UNRECOVERABLE.
+#
+#  So: anchor every rule, and scope ignores to the exact directory you mean.
+#  Never write a bare directory name. Never blanket-ignore a source extension.
+#  Before adding a rule, run:  git status --ignored  and read what it swallowed.
+# ==============================================================================
+
+# ------------------------------------------------------------------ python
+/**/__pycache__/
+*.py[cod]
+/*.egg-info/
+/build/
+/dist/
+/.venv/
+/venv/
+
+# ------------------------------------------------------------------ editor / tooling
+/.vscode/
+/.idea/
+/.pytest_cache/
+/.claude/
+
+# ------------------------------------------------------------------ heavy generated tensors
+# Per-identity averaged hidden states, regenerable by
+# pipeline/04_concepts/11_extract_per_identity.py (44M in the old repo).
+# Anchored to the exact directory — NOT a bare "per_identity_avg/".
+/pipeline/04_concepts/per_identity_avg/
+/experiments/**/per_identity_avg/
+
+# ------------------------------------------------------------------ logs
+# 103 files / 30M in the old repo. Extensions are safe to match broadly (no source
+# file uses them); directories are not, so log DIRS are anchored explicitly.
+*.log
+*.out
+*.err
+/logs/
+/pipeline/**/logs/
+/experiments/**/logs/
+
+# ------------------------------------------------------------------ run outputs
+# Result trees are regenerable and large. Anchored so that a future
+# "results.py" module or docs/results.md is never caught.
+/results/
+/output/
+/output_*/
+/previous_output/
+/linear_probe_features/
+
+# ==============================================================================
+#  DELIBERATELY COMMITTED — do not add ignore rules that would catch these.
+#  Listed as explicit un-ignores so the intent survives future edits.
+# ==============================================================================
+
+# Concept vectors: 8 files x 404K = 3.2M. Small, stable, and the reproducible
+# input to every intervention — checked in on purpose.
+!/assets/concept_vectors/*.pt
+
+# Vision-side direction axes (436K total).
+!/assets/vision_axes/*.npz
+
+# Paper figures (png/pdf).
+!/docs/figures/**
+
+# The task registry that core/dataset_loader.py:119 discovers at import time.
+# If these are ever ignored, discover_tasks() returns an EMPTY registry silently.
+!/tasks/**/*.yaml
+!/tasks/**/utils.py
+
+# Run configs.
+!/configs/*.yaml

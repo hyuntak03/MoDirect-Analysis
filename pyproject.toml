@@ -1,0 +1,105 @@
+# pyproject.toml — build config for MoDirect-Analysis.
+#
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ THIS FILE IS ALSO THE REPO-ROOT MARKER. DO NOT DELETE OR RENAME IT.          │
+# │                                                                             │
+# │ Every migrated script under pipeline/ locates the repo root by walking up    │
+# │ from __file__ until it finds a directory containing "pyproject.toml", then   │
+# │ loads core/ from that root by literal filesystem path, e.g.                  │
+# │   pipeline/01_extract/llm/extract_answer_features.py:70                      │
+# │     spec_from_file_location(name, os.path.join(_PROJECT_ROOT, "core", ...))  │
+# │ Nine scripts do this. Renaming this file does not raise — the walk simply    │
+# │ runs off the top of the tree and core/ resolves to the wrong place.          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modirect-analysis"
+version = "0.1.0"
+description = "Direction concept vectors, magnitude interventions, and mechanistic analysis for VLM direction reasoning."
+requires-python = ">=3.10"
+readme = "README.md"
+
+# Deps for the analysis library and the offline (no-GPU) scripts. torch/llava are NOT
+# here on purpose — see [project.optional-dependencies] below.
+dependencies = [
+    "numpy",
+    "pyyaml",       # core/dataset_loader.py parses the tasks/**/*.yaml registry
+    "pandas",
+    "datasets",
+    "matplotlib",
+    "seaborn",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+# Model-runtime extra. Only needed to actually run a forward pass (extraction and
+# intervention); the pure modules under modirect/ import numpy only, and their tests
+# run with neither torch nor llava present.
+#
+# NOTE: "llava" is LLaVA-NeXT and is NOT on PyPI. `pip install .[runtime]` will NOT
+# install it. Install it separately from source:
+#     git clone https://github.com/LLaVA-VL/LLaVA-NeXT && pip install -e LLaVA-NeXT
+# core/model_loader.py imports llava at module top level (line 10), so `import core`
+# hard-fails without it. That is why modirect/ imports core lazily, inside functions.
+runtime = [
+    "torch",
+    "transformers",
+    "accelerate",
+]
+
+dev = [
+    "pytest",
+]
+
+# ---------------------------------------------------------------- packaging
+#
+# EXPLICIT package list — automatic discovery is disabled by construction.
+#
+# Auto-discovery (flat-layout) MUST NOT be used here. The repo root holds several
+# directories that look like packages to setuptools but are not distributable:
+#
+#   tasks/       THE TRAP. 151 YAML files and, in 10 subdirectories, a utils.py.
+#                No __init__.py, so flat-layout auto-discovery would sweep it in as a
+#                namespace package (or, worse, error out as ambiguous). tasks/ is a
+#                DATA directory that must stay on disk as a sibling of core/ —
+#                core/dataset_loader.py:119 computes
+#                    _DEFAULT_TASKS_DIR = dirname(dirname(__file__))/tasks
+#                and calls discover_tasks() at import time. If that path is wrong the
+#                registry comes back SILENTLY EMPTY — no exception, no warning.
+#   pipeline/    entry-point scripts, run by path, not imported
+#   legacy/      superseded scripts, kept for provenance
+#   experiments/ one-off experiment drivers
+#
+# core/ IS listed: the nine literal-path loaders above need it on disk at the root, but
+# it is also imported as top-level "core" (core/__init__.py:1 does `from core.methods
+# import *`), so it must install as a real top-level package, not be vendored inside
+# modirect/. modirect/ wraps core/; it never copies or replaces it.
+#
+# Verified against the directories actually on disk. When you add a subpackage to
+# modirect/, add it HERE too — with an explicit list there is no discovery to fall back
+# on, and a missing entry does not fail the build. It ships a distribution that is
+# silently missing the module, which surfaces as an ImportError only after install.
+[tool.setuptools]
+packages = [
+    "modirect",
+    "modirect.concepts",
+    "modirect.config",
+    "modirect.interventions",
+    "modirect.io",
+    "modirect.models",
+    "modirect.probing",
+    "modirect.tasks",     # NB: the CODE package. <repo>/tasks/ (the YAML data dir) is
+                          # deliberately NOT packaged — see the note above.
+    "core",
+]
+include-package-data = true
+
+[tool.setuptools.package-data]
+core = ["*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

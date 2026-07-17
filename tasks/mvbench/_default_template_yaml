@@ -1,0 +1,12 @@
+dataset_path: OpenGVLab/MVBench
+dataset_kwargs:
+  token: True
+  cache_dir: ""
+  video: True
+  revision: video
+  create_link: True
+
+doc_to_visual: !function utils.doc_to_visual
+doc_to_text: !function utils.doc_to_text
+doc_to_target: !function utils.doc_to_target
+doc_to_false_option: !function utils.doc_to_false_option

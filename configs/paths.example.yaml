@@ -1,0 +1,126 @@
+# MoDirect path configuration — example / reference.
+#
+# USAGE
+#   cp configs/paths.example.yaml configs/paths.yaml   # then edit for your host
+#
+# `modirect.config.load_paths()` reads `configs/paths.yaml` if present. This `.example.`
+# file is never read: it is the documentation. Every key below is optional — omit one and
+# the documented default is used. An unknown key raises KeyError rather than being
+# ignored, so a typo cannot silently leave you analysing the wrong features.
+#
+# PRECEDENCE (first non-empty wins)
+#   overrides= argument  >  this file  >  environment variable  >  default below
+#
+# Only five keys have an environment variable, because only five names are already read
+# by the migrated scripts under pipeline/. Reusing those names means a shell that works
+# for pipeline/ works for modirect/ unchanged. The remaining keys are yaml-or-default.
+#
+# HOST STATUS (verified 2026-07-17 — re-verify before trusting):
+#   EXISTS   /data3/local_datasets/vlm_direction      but NOT its linear_probing_1500/ subdir
+#   EXISTS   /local_datasets/vlm_direction            but NOT its factorial_dataset/ subdir
+#   MISSING  /data2/local_datasets/vlm_direction
+#   MISSING  /data/datasets/LLaVA-Video-100K-Subset
+#   MISSING  the LLaVA-NeXT checkout (install separately)
+# Paths are never validated on load; call `load_paths().missing()` for a preflight report.
+
+# ---------------------------------------------------------------------------------
+# Anchors — other defaults are derived from these, so moving one moves its dependants.
+# ---------------------------------------------------------------------------------
+
+# Umbrella project dir holding LLaVA-NeXT, the synthetic testbed, and training work_dirs.
+# env: VLM_DIRECTION_ROOT
+# consumed by: pipeline/05_intervene/causal_intervention.py:36, direction_steering.py:35,
+#              delta_effect_analysis.py:29, vision/vision_per_temporal.py:37,
+#              llm_last_token/refinement_test.py:44, rigorous_verification.py:31
+vlm_direction_root: /nas2/data/takhyun03/project/2026/vlm_direction
+
+# LLaVA-NeXT checkout; prepended to sys.path before `import llava`. MISSING on this host.
+# Default: {vlm_direction_root}/LLaVA-NeXT   — checkpoint_root follows it.
+# env: LLAVA_NEXT_ROOT
+# consumed by: pipeline/05_intervene/causal_intervention.py:38 (and every runtime script)
+llava_next_root: /nas2/data/takhyun03/project/2026/vlm_direction/LLaVA-NeXT
+
+# ---------------------------------------------------------------------------------
+# Feature caches
+# ---------------------------------------------------------------------------------
+
+# 8-way-candidate cached features. Backs CLAUDE.md Sections A-G.
+# Layout: {feature_root}/{model}/{stage}/{task}/features.npy (+ features_layer_{l}.npy,
+#         labels.npy, qids.npy, meta.npy) — see modirect/config/stages.py.
+# consumed by: analysis/task_invariance/axis_layer_cos.py:21, magnitude_cascade.py,
+#              measure_invariance.py, stage_trajectory.py, measure_subspace_offaxis.py
+feature_root: /data3/local_datasets/vlm_direction/linear_probing_1500
+
+# 4-way-candidate re-extraction. Backs Section H (letter-vs-direction probing).
+# Kept separate from feature_root because the LETTER label space only exists here —
+# direction labels are candidate-count-invariant, letter labels are not.
+# consumed by: the letter-probe analyses; output_4way_1500/{model}/answer_probe_results/
+feature_root_4way: /data3/local_datasets/vlm_direction/linear_probing_4way_1500
+
+# ---------------------------------------------------------------------------------
+# Datasets
+# ---------------------------------------------------------------------------------
+
+# Root that MCQ `video` fields are relative to. Scripts strip this prefix from absolute
+# video paths, so it must match the prefix baked into the MCQ files.
+# consumed by: pipeline/05_intervene/vision/vision_amp.py:42 (strip at :79, load at :106),
+#              pipeline/05_intervene/llm_last_token/binding_test.py:42
+video_folder: /local_datasets/vlm_direction
+
+# Controlled factorial dataset: 5 obj x 5 bg x 4 dir x 20 instance x 4 mcq variant.
+# NOTE: the `directions` field here is an array of STRINGS ("up"), not the integers in
+# labels.npy. See modirect/config/directions.py before joining the two.
+# consumed by: analysis/factorial_experiment/scripts/*, Section M/N interventions
+factorial_root: /local_datasets/vlm_direction/factorial_dataset
+
+# Per-layer last-token hidden dumps: 28 layers x 8000 samples per condition.
+# Files are globbed as `baseline_{cond}_4variants*.npz`.
+# Default: {factorial_root}/hiddens
+# consumed by: analysis/task_invariance/mechanism_diagnosis.py:47 (load_factorial)
+hiddens_root: /local_datasets/vlm_direction/factorial_dataset/hiddens
+
+# ---------------------------------------------------------------------------------
+# HuggingFace caches
+# ---------------------------------------------------------------------------------
+
+# MISSING on this host. Retained as the default only because the migrated scripts still
+# `os.environ.setdefault` it; set it to a real cache dir if you are downloading weights.
+# env: HF_HOME
+# consumed by: pipeline/05_intervene/causal_intervention.py:39, direction_steering.py:38,
+#              vision/vision_per_temporal.py:40, llm_last_token/refinement_test.py:47
+hf_home: /data/datasets/LLaVA-Video-100K-Subset
+
+# Note this defaults to the same tree as video_folder — that is intentional and matches
+# the original scripts, not a copy-paste slip.
+# env: HF_DATASETS_CACHE
+# consumed by: causal_intervention.py:40, tasks/vlm_direction_testbed/utils.py:14
+hf_datasets_cache: /local_datasets/vlm_direction
+
+# ---------------------------------------------------------------------------------
+# Checkpoints
+# ---------------------------------------------------------------------------------
+
+# LoRA work_dirs. The basenames in modirect/config/registry.py resolve against this, so
+# the registry itself hardcodes no root. The source repo's absolute
+# /data/takhyun03/.../work_dirs (mechanism_diagnosis.py:37) does not exist here.
+# Default: {llava_next_root}/work_dirs
+# consumed by: registry.resolve_lora_path -> resolve_model_args;
+#              mirrors pipeline/05_intervene/delta_effect_analysis.py:42-48
+checkpoint_root: /nas2/data/takhyun03/project/2026/vlm_direction/LLaVA-NeXT/work_dirs
+
+# Optional. The `syn_v4_baseline` LoRA, used ONLY by the decoding-gap readout scripts.
+# Empty by default: the original was a third-party path that did not survive migration,
+# and those scripts already fall back to "" (i.e. skip) when it is unset.
+# env: SYN_V4_LORA
+# consumed by: pipeline/06_readout/decoding_gap_analysis.py:45, decoding_gap_mcq.py:53,
+#              decoding_gap.py:100
+syn_v4_lora: ""
+
+# ---------------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------------
+
+# Where modirect writes results. Defaults inside the repo ({repo_root}/outputs) so a
+# fresh clone produces output with no configuration at all. Point it at scratch storage
+# if you are writing anything large.
+output_root: outputs
