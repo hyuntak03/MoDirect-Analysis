@@ -13,6 +13,19 @@ Labels: 0=Down, 1=Left, 2=Right, 3=Up
 import os, json, numpy as np
 from itertools import combinations
 
+
+def _find_project_root(_start):
+    """Walk up to the repo root (marker: pyproject.toml). Depth-independent."""
+    _p = os.path.abspath(_start)
+    while _p != os.path.dirname(_p):
+        if os.path.isfile(os.path.join(_p, "pyproject.toml")):
+            return _p
+        _p = os.path.dirname(_p)
+    raise RuntimeError("MoDirect repo root not found (no pyproject.toml above %s)" % _start)
+
+
+_PROJECT_ROOT = _find_project_root(__file__)
+
 ROOT = "/data3/local_datasets/vlm_direction/linear_probing_1500"
 MODELS = {
     "vanilla":  "llava-video-7b",

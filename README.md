@@ -153,7 +153,8 @@ MoDirect-Analysis/
 ├── experiments/upstream/  # Zhang et al. cross-modal-information-flow (provenance)
 ├── legacy/                # superseded but preserved: older probing variants, utils_addon
 ├── assets/                # committed concept vectors (.pt) + vision axes (.npz)
-├── configs/               # paths.example.yaml, models.yaml
+├── configs/               # paths.example.yaml, models.yaml (+ paths.yaml, host-local)
+├── z_script/              # host-specific launchers — GITIGNORED, see z_script/README.md
 ├── docs/                  # report.md (canonical), lab-notebook.md, figures/
 └── tests/                 # concept/intervention math + layout invariants
 ```
@@ -196,6 +197,61 @@ export LLAVA_NEXT_ROOT=/path/to/LLaVA-NeXT
 
 Label space is Up / Down / Left / Right (chance = 25%).
 
+## 2026-07 re-run — v5_new checkpoints, cross-domain axes, magnitude restore
+
+The original feature caches (`/data3/...`) did not survive the host migration, so
+the chain was re-run against the `4combo_v5_new` checkpoint generation — Qwen2-based
+LoRAs (`llava-video-7b-qwen2_{baseline,channel_gate}_shape_simple_v5_new_lora-r64_f8_ep1_lr1e-5_bs12_ga2`,
+base `lmms-lab/LLaVA-Video-7B-Qwen2`). `channel_gate` is an **inference-active**
+tanh SE-gate on the pooled projector features (`use_motion_query=true`, weights in
+`non_lora_trainables.bin`), so it must be loaded through a LLaVA-NeXT checkout that
+has `motion_modules.py` — with this checkpoint's flags (aggregation=mean, no
+framewise/posneg/magnitude) old and new ChannelGate implementations are equivalent.
+
+The chain, in order (host launchers live in `z_script/`, gitignored):
+
+1. **Extract** — `pipeline/01_extract/llm/extract_answer_features.py` per
+   (model, task): answer-token hiddens at all 29 `hidden_states` indices,
+   6000 samples/task (R2R_4way_1500), fp16 `features_layer_{L}.npy`.
+2. **Axes** — `pipeline/03_geometry/axes/cross_domain_axes.py`: Δ_d per
+   (model, domain, layer, direction) via `modirect.concepts`, then layer-wise
+   cross-domain cos(Δ̂ᴬ, Δ̂ᴮ) for all 6 domain pairs and ‖Δ_d‖ per (layer, domain,
+   direction) → `outputs/cross_domain_axes_qwen2_v5/{model}/` (npz + json + figs).
+3. **Intervene** — `pipeline/05_intervene/llm_last_token/magnitude_restore_v5.py`:
+   on obj_place keep the domain's own axis and set only the magnitude
+   (`clean`: h − proj·Δ̂_op,d + m·Δ̂_op,d) at feat L21 with m = ‖Δ_sc,d‖, paired
+   per sample against `no_swap` / `clean_op` / `remove_own`; shards auto-match
+   the allocated GPUs. Full condition table (`amp_2x`, `add_canon_sc`,
+   `full_rep`) available via `--conditions`.
+4. **Report** — `magnitude_restore_report.py` merges shards →
+   `outputs/interventions_qwen2_v5/…/result.json` + accuracy figure.
+
+Headline numbers from step 2 (feat L21, mean over 4 directions):
+
+| | vanilla | baseline_v5 | channel_gate_v5 |
+|---|---:|---:|---:|
+| cross-domain Δ̂ cos (6-pair mean) | 0.478 | 0.934 | 0.947 |
+| ‖Δ‖ shape_color (in-domain) | 2.7 | 30.0 | 30.1 |
+| ‖Δ‖ obj_place (hardest OOD) | 1.3 | 14.7 | 17.9 |
+| obj_place / shape_color ratio | 0.48 | 0.49 | **0.60** |
+
+Fine-tuning creates a task-invariant axis from feat L20 (6-pair cos jumps
+0.67 → 0.94 across the L19→L20 boundary) together with the magnitude cliff; the
+OOD magnitude ordering shape_color > obj_color > shape_place > obj_place
+reproduces on v5, and channel_gate narrows the OOD deficit without touching the
+in-domain magnitude.
+
+> **Layer convention on this route:** `features_layer_{L}.npy` = `hidden_states[L]`
+> (L=0 embeddings), so "feat L21" is the output of decoder **module 20** and the
+> intervention hook goes on module `L−1`. This is NOT the committed-`.pt` assets'
+> convention (decoder-indexed) — never compare "L21" across the two routes.
+
+**Host config.** `configs/paths.yaml` (untracked, this host) points `feature_root`
+at the node-local cache
+`/data2/local_datasets/vlm_direction_modirect/linear_probing_R2R_4way_1500`
+(vll5 only — not visible from other nodes). `z_script/` holds the host launchers
+(conda env, SLURM partition, sbatch wrappers); recreate per host from its README.
+
 ## Gotchas
 
 Each of these fails **silently** — no exception, just wrong or empty results.
@@ -228,6 +284,12 @@ Each of these fails **silently** — no exception, just wrong or empty results.
 - **Paths.** Scripts previously hardcoded `/data/takhyun03/...`, which no longer resolves;
   they now resolve the repo root by marker walk and read data roots from
   `$VLM_DIRECTION_ROOT` / `configs/paths.yaml`.
+- **2026-07 fixes.** Four scripts referenced `_PROJECT_ROOT` without defining it
+  (`measure_invariance.py` died at import, `magnitude_cascade.py` *after* its full
+  compute, plus `vision_token_axis_per_layer.py` and `01_canonicalize_dataset.py`) —
+  all now carry the marker-walk helper. `core/dataset_loader.py` drops a YAML
+  `token: True` when no HF token is available, so the public testbed dataset loads
+  on hosts without a login.
 - Built on [LLaVA-NeXT](https://github.com/LLaVA-VL/LLaVA-NeXT). `experiments/upstream/`
   is retained from [Cross-modal Information Flow in MLLMs](https://arxiv.org/abs/2411.18620)
   (Zhang et al.).

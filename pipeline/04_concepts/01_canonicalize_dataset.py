@@ -19,6 +19,19 @@ import os
 _VLM_ROOT = os.environ.get("VLM_DIRECTION_ROOT", "/nas2/data/takhyun03/project/2026/vlm_direction")
 from collections import Counter
 
+
+def _find_project_root(_start):
+    """Walk up to the repo root (marker: pyproject.toml). Depth-independent."""
+    _p = os.path.abspath(_start)
+    while _p != os.path.dirname(_p):
+        if os.path.isfile(os.path.join(_p, "pyproject.toml")):
+            return _p
+        _p = os.path.dirname(_p)
+    raise RuntimeError("MoDirect repo root not found (no pyproject.toml above %s)" % _start)
+
+
+_PROJECT_ROOT = _find_project_root(__file__)
+
 SRC_ROOT = os.path.join(_VLM_ROOT, "synthetic_testbed/Testbed/huggingface/R2R_4way_1500")
 DST_ROOT = os.path.join(_PROJECT_ROOT, "assets/canonical_R2R")
 

@@ -324,11 +324,21 @@ def load_dataset_as_questions(
     elif os.environ.get("HF_DATASETS_CACHE"):
         hf_kwargs["cache_dir"] = os.environ["HF_DATASETS_CACHE"]
 
-    # token=True이면 환경변수 HF_TOKEN 또는 huggingface-cli 로그인 토큰 사용
+    # token=True이면 환경변수 HF_TOKEN 또는 huggingface-cli 로그인 토큰 사용.
+    # 둘 다 없으면 token 키를 제거 (public repo는 토큰 불필요 — token=True인 채로
+    # 넘기면 huggingface_hub가 LocalTokenNotFoundError를 던짐)
     if hf_kwargs.get("token") is True:
         env_token = os.environ.get("HF_TOKEN")
         if env_token:
             hf_kwargs["token"] = env_token
+        else:
+            try:
+                from huggingface_hub import get_token
+                stored = get_token()
+            except Exception:
+                stored = None
+            if stored is None:
+                hf_kwargs.pop("token")
 
     # video 데이터셋이면 snapshot_download로 비디오 파일 미리 확보
     # if is_video_dataset:

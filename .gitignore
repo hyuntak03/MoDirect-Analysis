@@ -59,8 +59,15 @@
 /results/
 /output/
 /output_*/
+/outputs/
 /previous_output/
 /linear_probe_features/
+
+# ------------------------------------------------------------------ host-specific runners
+# z_script/ holds THIS host's launch scripts (conda paths, node-local caches,
+# SLURM partition, sbatch wrappers). Deliberately untracked: recreate per host
+# from z_script/README.md; the portable logic lives in pipeline/ and modirect/.
+/z_script/
 
 # ==============================================================================
 #  DELIBERATELY COMMITTED — do not add ignore rules that would catch these.
@@ -84,3 +91,8 @@
 
 # Run configs.
 !/configs/*.yaml
+
+# …except the host-local override, documented as untracked in
+# modirect/config/paths.py ("checked-in-by-the-user overrides (gitignored)").
+# Must come AFTER the un-ignore above to win.
+/configs/paths.yaml
